@@ -1,0 +1,555 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Hardened Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'kiranjhojha@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'email', 'displayName', 'mobileNumber', 'inviteCode',
+          'otpVerified', 'role', 'status', 'isActivated', 'activationFeeAmount',
+          'walletBalance', 'depositBalance', 'commissionBalance', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'mobileNumber', 'inviteCode',
+          'otpVerified', 'role', 'status', 'isActivated', 'activationFeeAmount',
+          'activationRef', 'walletBalance', 'depositBalance', 'commissionBalance',
+          'lastOpType', 'lastOpRef', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.mobileNumber is string && data.mobileNumber.size() >= 10 && data.mobileNumber.size() <= 15 && data.mobileNumber.matches('^[0-9]{10,15}$') &&
+        data.inviteCode is string && data.inviteCode.size() >= 2 && data.inviteCode.size() <= 32 &&
+        data.otpVerified is bool &&
+        data.role in ['user', 'admin'] &&
+        data.status in ['pending_activation', 'pending_approval', 'active', 'suspended'] &&
+        data.isActivated is bool &&
+        data.activationFeeAmount is number && data.activationFeeAmount == 499 &&
+        (!('activationRef' in data) || (data.activationRef is string && data.activationRef.size() <= 100)) &&
+        data.walletBalance is number && data.walletBalance >= 0 &&
+        data.depositBalance is number && data.depositBalance >= 0 &&
+        data.commissionBalance is number && data.commissionBalance >= 0 &&
+        (!('lastOpType' in data) || data.lastOpType in ['none', 'recharge', 'withdrawal', 'admin']) &&
+        (!('lastOpRef' in data) || (data.lastOpRef is string && data.lastOpRef.size() <= 64)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'addedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'addedAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+        data.addedAt is timestamp;
+    }
+
+    function isValidAddMoneyRequest(data) {
+      return data.keys().hasAll([
+          'requestId', 'userId', 'userMobile', 'userEmail',
+          'amount', 'paymentRef', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'requestId', 'userId', 'userMobile', 'userEmail',
+          'amount', 'paymentRef', 'status', 'adminNote', 'processedBy',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.requestId) &&
+        isValidId(data.userId) &&
+        data.userMobile is string && data.userMobile.size() >= 10 && data.userMobile.size() <= 15 &&
+        data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 200 &&
+        data.amount is number && data.amount >= 1000 && data.amount <= 500000 && (data.amount % 1000) == 0 &&
+        data.paymentRef is string && data.paymentRef.size() >= 3 && data.paymentRef.size() <= 100 &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        (!('adminNote' in data) || (data.adminNote is string && data.adminNote.size() <= 300)) &&
+        (!('processedBy' in data) || (data.processedBy is string && data.processedBy.size() <= 128)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRechargeRequest(data) {
+      return data.keys().hasAll([
+          'requestId', 'userId', 'userMobile', 'mobileNumber', 'operator',
+          'amount', 'deductedFromDeposit', 'deductedFromCommission',
+          'status', 'monthKey', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'requestId', 'userId', 'userMobile', 'mobileNumber', 'operator',
+          'amount', 'deductedFromDeposit', 'deductedFromCommission',
+          'status', 'transactionRef', 'adminNote', 'monthKey', 'processedBy',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.requestId) &&
+        isValidId(data.userId) &&
+        data.userMobile is string && data.userMobile.size() >= 10 && data.userMobile.size() <= 15 &&
+        data.mobileNumber is string && data.mobileNumber.size() >= 10 && data.mobileNumber.size() <= 15 && data.mobileNumber.matches('^[0-9]{10,15}$') &&
+        data.operator in ['Jio', 'Airtel', 'Vi', 'BSNL'] &&
+        data.amount is number && data.amount >= 10 && data.amount <= 50000 &&
+        data.deductedFromDeposit is number && data.deductedFromDeposit >= 0 &&
+        data.deductedFromCommission is number && data.deductedFromCommission >= 0 &&
+        (data.deductedFromDeposit + data.deductedFromCommission - data.amount) >= -0.001 &&
+        (data.deductedFromDeposit + data.deductedFromCommission - data.amount) <= 0.001 &&
+        data.status in ['under_process', 'success', 'failed', 'refunded'] &&
+        (!('transactionRef' in data) || (data.transactionRef is string && data.transactionRef.size() <= 100)) &&
+        (!('adminNote' in data) || (data.adminNote is string && data.adminNote.size() <= 300)) &&
+        data.monthKey is string && data.monthKey.size() == 7 && data.monthKey.matches('^[0-9]{4}-[0-9]{2}$') &&
+        (!('processedBy' in data) || (data.processedBy is string && data.processedBy.size() <= 128)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRefundRequest(data) {
+      return data.keys().hasAll([
+          'refundId', 'rechargeId', 'userId', 'wrongMobileNumber',
+          'correctMobileNumber', 'operator', 'amount', 'reason',
+          'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'refundId', 'rechargeId', 'userId', 'wrongMobileNumber',
+          'correctMobileNumber', 'operator', 'amount', 'reason',
+          'status', 'adminNote', 'processedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.refundId) &&
+        isValidId(data.rechargeId) &&
+        isValidId(data.userId) &&
+        data.wrongMobileNumber is string && data.wrongMobileNumber.size() >= 10 && data.wrongMobileNumber.size() <= 15 &&
+        data.correctMobileNumber is string && data.correctMobileNumber.size() >= 10 && data.correctMobileNumber.size() <= 15 && data.correctMobileNumber.matches('^[0-9]{10,15}$') &&
+        data.operator in ['Jio', 'Airtel', 'Vi', 'BSNL'] &&
+        data.amount is number && data.amount > 0 && data.amount <= 50000 &&
+        data.reason is string && data.reason.size() >= 3 && data.reason.size() <= 500 &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        (!('adminNote' in data) || (data.adminNote is string && data.adminNote.size() <= 300)) &&
+        (!('processedBy' in data) || (data.processedBy is string && data.processedBy.size() <= 128)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidWithdrawalRequest(data) {
+      return data.keys().hasAll([
+          'requestId', 'userId', 'userMobile', 'amount', 'accountHolderName',
+          'bankName', 'accountNumber', 'ifscCode', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'requestId', 'userId', 'userMobile', 'amount', 'accountHolderName',
+          'bankName', 'accountNumber', 'ifscCode', 'status', 'paymentRef',
+          'adminNote', 'processedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.requestId) &&
+        isValidId(data.userId) &&
+        data.userMobile is string && data.userMobile.size() >= 10 && data.userMobile.size() <= 15 &&
+        data.amount is number && data.amount >= 100 && data.amount <= 500000 &&
+        data.accountHolderName is string && data.accountHolderName.size() >= 2 && data.accountHolderName.size() <= 120 &&
+        data.bankName is string && data.bankName.size() >= 2 && data.bankName.size() <= 120 &&
+        data.accountNumber is string && data.accountNumber.size() >= 6 && data.accountNumber.size() <= 40 &&
+        data.ifscCode is string && data.ifscCode.size() >= 11 && data.ifscCode.size() <= 15 &&
+        data.status in ['pending', 'paid', 'rejected'] &&
+        (!('paymentRef' in data) || (data.paymentRef is string && data.paymentRef.size() <= 100)) &&
+        (!('adminNote' in data) || (data.adminNote is string && data.adminNote.size() <= 300)) &&
+        (!('processedBy' in data) || (data.processedBy is string && data.processedBy.size() <= 128)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidMonthlyCommission(data) {
+      return data.keys().hasAll([
+          'commissionId', 'userId', 'userMobile', 'monthKey',
+          'eligibleRechargeTotal', 'commissionRate', 'commissionAmount',
+          'eligibleCount', 'status', 'approvedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'commissionId', 'userId', 'userMobile', 'monthKey',
+          'eligibleRechargeTotal', 'commissionRate', 'commissionAmount',
+          'eligibleCount', 'status', 'approvedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.commissionId) &&
+        isValidId(data.userId) &&
+        data.userMobile is string && data.userMobile.size() >= 10 && data.userMobile.size() <= 15 &&
+        data.monthKey is string && data.monthKey.size() == 7 && data.monthKey.matches('^[0-9]{4}-[0-9]{2}$') &&
+        data.eligibleRechargeTotal is number && data.eligibleRechargeTotal > 0 &&
+        data.commissionRate is number && data.commissionRate == 0.1 &&
+        data.commissionAmount is number && data.commissionAmount > 0 &&
+        data.eligibleCount is number && data.eligibleCount >= 1 &&
+        data.status == 'credited' &&
+        isValidId(data.approvedBy) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll([
+          'transactionId', 'userId', 'type', 'amount', 'direction',
+          'balanceBucket', 'referenceId', 'description', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'transactionId', 'userId', 'type', 'amount', 'direction',
+          'balanceBucket', 'referenceId', 'description', 'createdAt'
+        ]) &&
+        isValidId(data.transactionId) &&
+        isValidId(data.userId) &&
+        data.type in [
+          'add_money_credit', 'recharge_debit', 'recharge_failed_refund',
+          'refund_credit', 'commission_credit', 'withdrawal_hold',
+          'withdrawal_refund', 'activation_fee_demo'
+        ] &&
+        data.amount is number && data.amount > 0 &&
+        data.direction in ['credit', 'debit'] &&
+        data.balanceBucket in ['deposit', 'commission', 'mixed', 'activation'] &&
+        data.referenceId is string && data.referenceId.size() >= 1 && data.referenceId.size() <= 100 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 300 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll([
+          'notificationId', 'targetUserId', 'title', 'message',
+          'category', 'isRead', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'notificationId', 'targetUserId', 'title', 'message',
+          'category', 'isRead', 'createdAt'
+        ]) &&
+        isValidId(data.notificationId) &&
+        isValidId(data.targetUserId) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 150 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 500 &&
+        data.category in ['activation', 'add_money', 'recharge', 'commission', 'refund', 'withdrawal', 'system'] &&
+        data.isRead is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidInviteCode(data) {
+      return data.keys().hasAll(['code', 'label', 'isActive', 'createdBy', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['code', 'label', 'isActive', 'createdBy', 'createdAt', 'updatedAt']) &&
+        isValidId(data.code) &&
+        data.code.size() >= 3 && data.code.size() <= 32 &&
+        data.code.matches('^[A-Z0-9_\\-]+$') &&
+        data.label is string && data.label.size() >= 1 && data.label.size() <= 100 &&
+        data.isActive is bool &&
+        isValidId(data.createdBy) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. Users Collection (PII + Wallet protected)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.uid == request.auth.uid);
+
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == userId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            isOwner(userId) &&
+            incoming().role == 'user' &&
+            incoming().isActivated == false &&
+            incoming().walletBalance == 0 &&
+            incoming().depositBalance == 0 &&
+            incoming().commissionBalance == 0 &&
+            incoming().status in ['pending_activation', 'pending_approval']
+          )
+        );
+
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          // Action 1: User submits Rs 499 activation proof (pending_activation -> pending_approval)
+          (
+            isOwner(userId) &&
+            existing().status == 'pending_activation' &&
+            incoming().status == 'pending_approval' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'activationRef', 'updatedAt'])
+          ) ||
+          // Action 2: Atomic recharge wallet deduction verified via getAfter
+          (
+            isOwner(userId) &&
+            existing().isActivated == true &&
+            existing().status == 'active' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['walletBalance', 'depositBalance', 'commissionBalance', 'lastOpType', 'lastOpRef', 'updatedAt']) &&
+            incoming().lastOpType == 'recharge' &&
+            isValidId(incoming().lastOpRef) &&
+            (incoming().depositBalance + incoming().commissionBalance - incoming().walletBalance) >= -0.001 &&
+            (incoming().depositBalance + incoming().commissionBalance - incoming().walletBalance) <= 0.001 &&
+            incoming().depositBalance <= existing().depositBalance &&
+            incoming().commissionBalance <= existing().commissionBalance &&
+            incoming().walletBalance < existing().walletBalance &&
+            !exists(/databases/$(database)/documents/rechargeRequests/$(incoming().lastOpRef)) &&
+            getAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().lastOpRef)).data.userId == request.auth.uid &&
+            (getAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().lastOpRef)).data.deductedFromDeposit - (existing().depositBalance - incoming().depositBalance)) >= -0.001 &&
+            (getAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().lastOpRef)).data.deductedFromDeposit - (existing().depositBalance - incoming().depositBalance)) <= 0.001 &&
+            (getAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().lastOpRef)).data.deductedFromCommission - (existing().commissionBalance - incoming().commissionBalance)) >= -0.001 &&
+            (getAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().lastOpRef)).data.deductedFromCommission - (existing().commissionBalance - incoming().commissionBalance)) <= 0.001 &&
+            (getAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().lastOpRef)).data.amount - (existing().walletBalance - incoming().walletBalance)) >= -0.001 &&
+            (getAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().lastOpRef)).data.amount - (existing().walletBalance - incoming().walletBalance)) <= 0.001
+          ) ||
+          // Action 3: Atomic withdrawal hold from commission balance verified via getAfter
+          (
+            isOwner(userId) &&
+            existing().isActivated == true &&
+            existing().status == 'active' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['walletBalance', 'commissionBalance', 'lastOpType', 'lastOpRef', 'updatedAt']) &&
+            incoming().lastOpType == 'withdrawal' &&
+            isValidId(incoming().lastOpRef) &&
+            incoming().depositBalance == existing().depositBalance &&
+            incoming().commissionBalance < existing().commissionBalance &&
+            (incoming().depositBalance + incoming().commissionBalance - incoming().walletBalance) >= -0.001 &&
+            (incoming().depositBalance + incoming().commissionBalance - incoming().walletBalance) <= 0.001 &&
+            !exists(/databases/$(database)/documents/withdrawalRequests/$(incoming().lastOpRef)) &&
+            getAfter(/databases/$(database)/documents/withdrawalRequests/$(incoming().lastOpRef)).data.userId == request.auth.uid &&
+            (getAfter(/databases/$(database)/documents/withdrawalRequests/$(incoming().lastOpRef)).data.amount - (existing().commissionBalance - incoming().commissionBalance)) >= -0.001 &&
+            (getAfter(/databases/$(database)/documents/withdrawalRequests/$(incoming().lastOpRef)).data.amount - (existing().commissionBalance - incoming().commissionBalance)) <= 0.001
+          )
+        );
+    }
+
+    // 2. Admins Registry
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create, update: if isBootstrappedAdmin() && isValidId(userId) && isValidAdminRecord(incoming());
+      allow delete: if isBootstrappedAdmin() && isValidId(userId);
+    }
+
+    // 3. Add Money Requests
+    match /addMoneyRequests/{requestId} {
+      allow get: if isValidId(requestId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+
+      allow create: if isVerifiedUser() && isValidId(requestId) && isValidAddMoneyRequest(incoming()) &&
+        incoming().requestId == requestId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        !('adminNote' in incoming()) &&
+        !('processedBy' in incoming()) &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActivated == true;
+
+      allow update: if isAdmin() && isValidId(requestId) && isValidAddMoneyRequest(incoming()) &&
+        incoming().requestId == existing().requestId &&
+        incoming().userId == existing().userId &&
+        incoming().amount == existing().amount &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        existing().status == 'pending' &&
+        incoming().status in ['approved', 'rejected'] &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'processedBy', 'updatedAt']);
+    }
+
+    // 4. Recharge Requests
+    match /rechargeRequests/{requestId} {
+      allow get: if isValidId(requestId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+
+      allow create: if isVerifiedUser() && isValidId(requestId) && isValidRechargeRequest(incoming()) &&
+        incoming().requestId == requestId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'under_process' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        !('transactionRef' in incoming()) &&
+        !('processedBy' in incoming()) &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActivated == true &&
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastOpRef == requestId &&
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastOpType == 'recharge';
+
+      allow update: if isAdmin() && isValidId(requestId) && isValidRechargeRequest(incoming()) &&
+        incoming().requestId == existing().requestId &&
+        incoming().userId == existing().userId &&
+        incoming().amount == existing().amount &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        existing().status in ['under_process', 'success'] &&
+        incoming().status in ['success', 'failed', 'refunded'] &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'transactionRef', 'adminNote', 'processedBy', 'updatedAt']);
+    }
+
+    // 5. Refund Requests (keyed by rechargeId to prevent duplicate refunds)
+    match /refundRequests/{rechargeId} {
+      allow get: if isValidId(rechargeId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+
+      allow create: if isVerifiedUser() && isValidId(rechargeId) && isValidRefundRequest(incoming()) &&
+        incoming().rechargeId == rechargeId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        !('adminNote' in incoming()) &&
+        !('processedBy' in incoming()) &&
+        exists(/databases/$(database)/documents/rechargeRequests/$(rechargeId)) &&
+        get(/databases/$(database)/documents/rechargeRequests/$(rechargeId)).data.userId == request.auth.uid &&
+        get(/databases/$(database)/documents/rechargeRequests/$(rechargeId)).data.amount == incoming().amount &&
+        get(/databases/$(database)/documents/rechargeRequests/$(rechargeId)).data.status in ['under_process', 'success'];
+
+      allow update: if isAdmin() && isValidId(rechargeId) && isValidRefundRequest(incoming()) &&
+        incoming().refundId == existing().refundId &&
+        incoming().rechargeId == existing().rechargeId &&
+        incoming().userId == existing().userId &&
+        incoming().amount == existing().amount &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        existing().status == 'pending' &&
+        incoming().status in ['approved', 'rejected'] &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'processedBy', 'updatedAt']);
+    }
+
+    // 6. Withdrawal Requests
+    match /withdrawalRequests/{requestId} {
+      allow get: if isValidId(requestId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+
+      allow create: if isVerifiedUser() && isValidId(requestId) && isValidWithdrawalRequest(incoming()) &&
+        incoming().requestId == requestId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        !('paymentRef' in incoming()) &&
+        !('processedBy' in incoming()) &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActivated == true &&
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastOpRef == requestId &&
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastOpType == 'withdrawal';
+
+      allow update: if isAdmin() && isValidId(requestId) && isValidWithdrawalRequest(incoming()) &&
+        incoming().requestId == existing().requestId &&
+        incoming().userId == existing().userId &&
+        incoming().amount == existing().amount &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        existing().status == 'pending' &&
+        incoming().status in ['paid', 'rejected'] &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'paymentRef', 'adminNote', 'processedBy', 'updatedAt']);
+    }
+
+    // 7. Monthly Commissions (admin-only creation, keyed by userId_monthKey)
+    match /monthlyCommissions/{commissionId} {
+      allow get: if isValidId(commissionId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+
+      allow create: if isAdmin() && isValidId(commissionId) && isValidMonthlyCommission(incoming()) &&
+        incoming().commissionId == commissionId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+    }
+
+    // 8. Financial Transactions Ledger (immutable)
+    match /transactions/{transactionId} {
+      allow get: if isValidId(transactionId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+
+      allow create: if isVerifiedUser() && isValidId(transactionId) && isValidTransaction(incoming()) &&
+        incoming().transactionId == transactionId &&
+        incoming().createdAt == request.time && (
+          isAdmin() ||
+          (
+            incoming().userId == request.auth.uid &&
+            incoming().type == 'recharge_debit' &&
+            incoming().direction == 'debit' &&
+            existsAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().referenceId)) &&
+            getAfter(/databases/$(database)/documents/rechargeRequests/$(incoming().referenceId)).data.amount == incoming().amount
+          ) ||
+          (
+            incoming().userId == request.auth.uid &&
+            incoming().type == 'withdrawal_hold' &&
+            incoming().direction == 'debit' &&
+            existsAfter(/databases/$(database)/documents/withdrawalRequests/$(incoming().referenceId)) &&
+            getAfter(/databases/$(database)/documents/withdrawalRequests/$(incoming().referenceId)).data.amount == incoming().amount
+          )
+        );
+    }
+
+    // 9. Notifications
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && (
+        isAdmin() ||
+        (isVerifiedUser() && existing().targetUserId == request.auth.uid)
+      );
+      allow list: if (isBootstrappedAdmin() && resource.data.targetUserId == 'ADMIN') ||
+        (isVerifiedUser() && resource.data.targetUserId == request.auth.uid);
+
+      allow create: if isVerifiedUser() && isValidId(notificationId) && isValidNotification(incoming()) &&
+        incoming().notificationId == notificationId &&
+        incoming().createdAt == request.time &&
+        incoming().isRead == false && (
+          isAdmin() ||
+          incoming().targetUserId == 'ADMIN'
+        );
+
+      allow update: if isVerifiedUser() && isValidId(notificationId) && isValidNotification(incoming()) &&
+        incoming().notificationId == existing().notificationId &&
+        incoming().targetUserId == existing().targetUserId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isRead']) && (
+          isAdmin() ||
+          existing().targetUserId == request.auth.uid
+        );
+    }
+
+    // 10. Invite Codes (admin-managed, single-code get allowed for verified registration)
+    match /inviteCodes/{code} {
+      allow get: if isValidId(code) && isVerifiedUser();
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isAdmin() && isValidId(code) && isValidInviteCode(incoming()) &&
+        incoming().code == code &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() && isValidId(code) && isValidInviteCode(incoming()) &&
+        incoming().code == existing().code &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'label', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(code);
+    }
+  }
+}

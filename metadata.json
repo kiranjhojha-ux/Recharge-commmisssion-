@@ -1,0 +1,8 @@
+{
+  "name": "RECHARGE COMMISSION",
+  "description": "मोबाइल रिचार्ज और मासिक 10% कमीशन प्रबंधन वेब एप्लिकेशन (डेमो मोड)",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered user profile, activation state, and wallet balances",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "mobileNumber": { "type": "string", "minLength": 10, "maxLength": 15, "pattern": "^[0-9]{10,15}$" },
+        "inviteCode": { "type": "string", "minLength": 2, "maxLength": 32 },
+        "otpVerified": { "type": "boolean" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "status": { "type": "string", "enum": ["pending_activation", "pending_approval", "active", "suspended"] },
+        "isActivated": { "type": "boolean" },
+        "activationFeeAmount": { "type": "number" },
+        "activationRef": { "type": "string", "maxLength": 100 },
+        "walletBalance": { "type": "number" },
+        "depositBalance": { "type": "number" },
+        "commissionBalance": { "type": "number" },
+        "lastOpType": { "type": "string", "enum": ["none", "recharge", "withdrawal", "admin"] },
+        "lastOpRef": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid", "email", "displayName", "mobileNumber", "inviteCode",
+        "otpVerified", "role", "status", "isActivated", "activationFeeAmount",
+        "walletBalance", "depositBalance", "commissionBalance", "createdAt", "updatedAt"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Authorized admin registry",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "addedAt"]
+    },
+    "AddMoneyRequest": {
+      "title": "AddMoneyRequest",
+      "description": "User deposit request (minimum Rs 1000 in multiples of Rs 1000) awaiting admin verification",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userMobile": { "type": "string", "minLength": 10, "maxLength": 15 },
+        "userEmail": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "amount": { "type": "number" },
+        "paymentRef": { "type": "string", "minLength": 3, "maxLength": 100 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "adminNote": { "type": "string", "maxLength": 300 },
+        "processedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "requestId", "userId", "userMobile", "userEmail", "amount",
+        "paymentRef", "status", "createdAt", "updatedAt"
+      ]
+    },
+    "RechargeRequest": {
+      "title": "RechargeRequest",
+      "description": "Mobile recharge request processed manually by admin",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userMobile": { "type": "string", "minLength": 10, "maxLength": 15 },
+        "mobileNumber": { "type": "string", "minLength": 10, "maxLength": 15, "pattern": "^[0-9]{10,15}$" },
+        "operator": { "type": "string", "enum": ["Jio", "Airtel", "Vi", "BSNL"] },
+        "amount": { "type": "number" },
+        "deductedFromDeposit": { "type": "number" },
+        "deductedFromCommission": { "type": "number" },
+        "status": { "type": "string", "enum": ["under_process", "success", "failed", "refunded"] },
+        "transactionRef": { "type": "string", "maxLength": 100 },
+        "adminNote": { "type": "string", "maxLength": 300 },
+        "monthKey": { "type": "string", "minLength": 7, "maxLength": 7, "pattern": "^[0-9]{4}-[0-9]{2}$" },
+        "processedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "requestId", "userId", "userMobile", "mobileNumber", "operator",
+        "amount", "deductedFromDeposit", "deductedFromCommission",
+        "status", "monthKey", "createdAt", "updatedAt"
+      ]
+    },
+    "RefundRequest": {
+      "title": "RefundRequest",
+      "description": "User wrong recharge refund request keyed by rechargeId to prevent duplicate refunds",
+      "type": "object",
+      "properties": {
+        "refundId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "rechargeId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "wrongMobileNumber": { "type": "string", "minLength": 10, "maxLength": 15 },
+        "correctMobileNumber": { "type": "string", "minLength": 10, "maxLength": 15, "pattern": "^[0-9]{10,15}$" },
+        "operator": { "type": "string", "enum": ["Jio", "Airtel", "Vi", "BSNL"] },
+        "amount": { "type": "number" },
+        "reason": { "type": "string", "minLength": 3, "maxLength": 500 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "adminNote": { "type": "string", "maxLength": 300 },
+        "processedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "refundId", "rechargeId", "userId", "wrongMobileNumber", "correctMobileNumber",
+        "operator", "amount", "reason", "status", "createdAt", "updatedAt"
+      ]
+    },
+    "WithdrawalRequest": {
+      "title": "WithdrawalRequest",
+      "description": "Commission withdrawal request with bank details",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userMobile": { "type": "string", "minLength": 10, "maxLength": 15 },
+        "amount": { "type": "number" },
+        "accountHolderName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "bankName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "accountNumber": { "type": "string", "minLength": 6, "maxLength": 40 },
+        "ifscCode": { "type": "string", "minLength": 11, "maxLength": 15 },
+        "status": { "type": "string", "enum": ["pending", "paid", "rejected"] },
+        "paymentRef": { "type": "string", "maxLength": 100 },
+        "adminNote": { "type": "string", "maxLength": 300 },
+        "processedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "requestId", "userId", "userMobile", "amount", "accountHolderName",
+        "bankName", "accountNumber", "ifscCode", "status", "createdAt", "updatedAt"
+      ]
+    },
+    "MonthlyCommission": {
+      "title": "MonthlyCommission",
+      "description": "Monthly 10% commission payout record keyed by userId_monthKey to prevent duplicates",
+      "type": "object",
+      "properties": {
+        "commissionId": { "type": "string", "minLength": 5, "maxLength": 150, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userMobile": { "type": "string", "minLength": 10, "maxLength": 15 },
+        "monthKey": { "type": "string", "minLength": 7, "maxLength": 7, "pattern": "^[0-9]{4}-[0-9]{2}$" },
+        "eligibleRechargeTotal": { "type": "number" },
+        "commissionRate": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "eligibleCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["credited"] },
+        "approvedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "commissionId", "userId", "userMobile", "monthKey", "eligibleRechargeTotal",
+        "commissionRate", "commissionAmount", "eligibleCount", "status",
+        "approvedBy", "createdAt", "updatedAt"
+      ]
+    },
+    "FinancialTransaction": {
+      "title": "FinancialTransaction",
+      "description": "Immutable financial ledger record for every wallet movement",
+      "type": "object",
+      "properties": {
+        "transactionId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": {
+          "type": "string",
+          "enum": [
+            "add_money_credit",
+            "recharge_debit",
+            "recharge_failed_refund",
+            "refund_credit",
+            "commission_credit",
+            "withdrawal_hold",
+            "withdrawal_refund",
+            "activation_fee_demo"
+          ]
+        },
+        "amount": { "type": "number" },
+        "direction": { "type": "string", "enum": ["credit", "debit"] },
+        "balanceBucket": { "type": "string", "enum": ["deposit", "commission", "mixed", "activation"] },
+        "referenceId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "transactionId", "userId", "type", "amount", "direction",
+        "balanceBucket", "referenceId", "description", "createdAt"
+      ]
+    },
+    "UserNotification": {
+      "title": "UserNotification",
+      "description": "User and admin action notifications",
+      "type": "object",
+      "properties": {
+        "notificationId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "targetUserId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "category": { "type": "string", "enum": ["activation", "add_money", "recharge", "commission", "refund", "withdrawal", "system"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["notificationId", "targetUserId", "title", "message", "category", "isRead", "createdAt"]
+    },
+    "InviteCode": {
+      "title": "InviteCode",
+      "description": "Admin-managed invite codes required for registration",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 3, "maxLength": 32, "pattern": "^[A-Z0-9_\\-]+$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "isActive": { "type": "boolean" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "label", "isActive", "createdBy", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles containing PII, activation status, and wallet balances"
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Admin user UID registry"
+    },
+    "/inviteCodes/{code}": {
+      "schema": { "$ref": "#/entities/InviteCode" },
+      "description": "Invite codes for gated user registration"
+    },
+    "/addMoneyRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/AddMoneyRequest" },
+      "description": "Deposit requests awaiting admin verification"
+    },
+    "/rechargeRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/RechargeRequest" },
+      "description": "Mobile recharge requests"
+    },
+    "/refundRequests/{rechargeId}": {
+      "schema": { "$ref": "#/entities/RefundRequest" },
+      "description": "Wrong recharge refund requests keyed by rechargeId"
+    },
+    "/withdrawalRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/WithdrawalRequest" },
+      "description": "Commission withdrawal requests"
+    },
+    "/monthlyCommissions/{commissionId}": {
+      "schema": { "$ref": "#/entities/MonthlyCommission" },
+      "description": "Monthly 10% commission credit records"
+    },
+    "/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/FinancialTransaction" },
+      "description": "Immutable financial transaction ledger"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/UserNotification" },
+      "description": "User and admin notifications"
+    }
+  }
+}
